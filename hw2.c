@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h> //malloc
 #include <unistd.h> 
-#include <stdbool.h>
+#include<fcntl.h>
 
 #define BUFFER_SIZE 80;
 
@@ -10,8 +10,9 @@ struct Command{
 	char* raw_input;
 	char** args;
 	int argc;
-	bool in;
-	bool out;
+
+	char* infile;
+	char* outfile;
 };
 typedef struct Command Command;
 
@@ -26,17 +27,19 @@ int main(int argc, char* argv[]){
 	int status = 1;
 
 	while(status){
-		printf("> ");
+		printf("$ ");
 		Command cmd;
 		Command* cmd_ptr = &cmd; //pointer to Command cmd
 
 		read_line(cmd_ptr);
 		parse(cmd_ptr);
+
 		status = execute(cmd_ptr);
 
-		// if(status == 0){
-		// 	break;
-		// }
+		if(status == 0){
+			break;
+		}
+		//might want to free memory in cmd here
 	}
 
 	return EXIT_SUCCESS;
@@ -44,12 +47,12 @@ int main(int argc, char* argv[]){
 
 void read_line(Command* cmd){ //this function can also be implemented with getline (way easier)
 	int buffer_size = BUFFER_SIZE;
-	char* buffer = malloc(sizeof(char) * buffer_size);
+	cmd->raw_input = malloc(sizeof(char) * buffer_size);
 	int position = 0;
 	int c;
 
 	//malloc check
-	if(!buffer){
+	if(!cmd->raw_input){
 		perror("malloc error\n");
 		exit(EXIT_FAILURE);
 	}
@@ -62,12 +65,11 @@ void read_line(Command* cmd){ //this function can also be implemented with getli
 		c = getchar(); //same as getc(stdin)
 
 		if(c == EOF || c == '\n'){ //user can invoke eof with ctrl+z
-			buffer[position] = '\0';
-			cmd->raw_input = buffer;
+			cmd->raw_input[position] = '\0';
 			return;
 		}
 		else{
-			buffer[position] = c;
+			cmd->raw_input[position] = c;
 		}
 		++position;
 	}
@@ -87,15 +89,32 @@ void parse(Command* cmd){
 		exit(EXIT_FAILURE);
 	}
 
+	int infile_position = -1;
+	int outfile_position = -1;
 	token = strtok(cmd->raw_input, " \n\t\r");
+
 	while(token != NULL){
 		cmd->args[position] = token;
+		if(strcmp(token, "<") == 0){
+			// input redirect
+			infile_position = position + 1;
+		}
+		if(strcmp(token, ">") == 0){
+			// output redirect
+			outfile_position = position + 1;
+		}
 		token = strtok(NULL, " \n\t\r");
 		++position;
 	}
 
 	cmd->args[position] = NULL;
 	cmd->argc = position;
+	if(infile_position != -1){
+		cmd->infile = cmd->args[infile_position];
+	}
+	if(outfile_position != -1){
+		cmd->outfile = cmd->args[outfile_position];
+	}
 	return;
 }
 
@@ -108,6 +127,17 @@ int execute(Command* cmd){
 	//redirection handling:
 	int tempin = dup(0);
 	int tempout = dup(1);
+	int fdout;
+	int fdin;
+
+	if(cmd->outfile){
+		fdout = open(cmd->outfile, O_WRONLY);
+		dup(fdout);
+	}
+	if(cmd->infile){
+		fdin = open(cmd->infile, O_RDONLY);
+		dup(fdin);
+	}
 
 	pid_t pid;
 	int status;
@@ -128,6 +158,8 @@ int execute(Command* cmd){
 		//printf("parent pid: %i\n", pid);
 		waitpid(pid, &status, 0); // WNOHANG parent can run concurrently as child
 	}
+
+
 
 	return 1;
 }
