@@ -124,37 +124,39 @@ int execute(Command* cmd){
 		return 0;
 	}
 
-	//redirection handling:
-	int stdin  = dup(0); //hold filedescriptor for stdin
-	int stdout = dup(1); //hold filedescriptor for stdout
-
-	if(cmd->outfile){
-		int fd;
-		if((fd = open(cmd->outfile, O_WRONLY | O_CREAT | O_TRUNC), S_IRWXU) < 0){
-			perror("open (write) error\n");
-		}
-		dup2(fd, 0);
-		close(fd);
-	}
-	if(cmd->infile){
-		int fd;
-		printf("infile detected");
-		if((fd = open(cmd->infile, O_RDONLY)) < 0){
-			perror("open (read) error\n");
-		}
-		dup2(fd, 1);
-		close(fd);
-	}
-
 	pid_t pid;
 	int status;
 	pid = fork();
 	if(pid == 0){
 		// child process
 		//printf("child pid: %i\n", pid);
+		//redirection handling:
+		// int stdin  = dup(0); //hold filedescriptor for stdin
+		// int stdout = dup(1); //hold filedescriptor for stdout
+
+		if(cmd->outfile){
+			int fd;
+			if((fd = open(cmd->outfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR)) < 0){
+				perror("open (write) error\n");
+			}
+			dup2(fd, STDOUT_FILENO);
+			close(fd);
+		}
+		if(cmd->infile){
+			int fd;
+			printf("infile detected");
+			if((fd = open(cmd->infile, O_RDONLY)) < 0){
+				perror("open (read) error\n");
+			}
+			dup2(fd, STDIN_FILENO);
+			close(fd);
+		}
 		if(execvp(cmd->args[0], cmd->args) == -1){
 			perror("execv error\n");
 		}
+
+		// dup2(stdin, 0);
+		// dup2(stdout, 1);
 	}
 	else if(pid < 0){
 		// failed
@@ -164,8 +166,6 @@ int execute(Command* cmd){
 		// parent
 		//printf("parent pid: %i\n", pid);
 		waitpid(pid, &status, 0); // WNOHANG parent can run concurrently as child
-		dup2(stdin, 0);
-		dup2(stdout, 1);
 	}
 
 	return 1;
