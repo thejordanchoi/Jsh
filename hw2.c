@@ -94,27 +94,27 @@ void parse(Command* cmd){
 	token = strtok(cmd->raw_input, " \n\t\r");
 
 	while(token != NULL){
-		cmd->args[position] = token;
 		if(strcmp(token, "<") == 0){
 			// input redirect
-			infile_position = position + 1;
+			//infile_position = position + 1;
+			cmd->infile = strtok(NULL, " \n\t\r");
 		}
-		if(strcmp(token, ">") == 0){
+		else if(strcmp(token, ">") == 0){
 			// output redirect
-			outfile_position = position + 1;
+			//outfile_position = position + 1;
+			cmd->outfile = strtok(NULL, " \n\t\r");
+		}
+		else{
+			cmd->args[position] = token;
+			++position;
 		}
 		token = strtok(NULL, " \n\t\r");
-		++position;
+		
 	}
 
 	cmd->args[position] = NULL;
 	cmd->argc = position;
-	if(infile_position != -1){
-		cmd->infile = cmd->args[infile_position];
-	}
-	if(outfile_position != -1){
-		cmd->outfile = cmd->args[outfile_position];
-	}
+
 	return;
 }
 
@@ -125,18 +125,25 @@ int execute(Command* cmd){
 	}
 
 	//redirection handling:
-	int tempin = dup(0);
-	int tempout = dup(1);
-	int fdout;
-	int fdin;
+	int stdin  = dup(0); //hold filedescriptor for stdin
+	int stdout = dup(1); //hold filedescriptor for stdout
 
 	if(cmd->outfile){
-		fdout = open(cmd->outfile, O_WRONLY);
-		dup(fdout);
+		int fd;
+		if((fd = open(cmd->outfile, O_WRONLY | O_CREAT | O_TRUNC), S_IRWXU) < 0){
+			perror("open (write) error\n");
+		}
+		dup2(fd, 0);
+		close(fd);
 	}
 	if(cmd->infile){
-		fdin = open(cmd->infile, O_RDONLY);
-		dup(fdin);
+		int fd;
+		printf("infile detected");
+		if((fd = open(cmd->infile, O_RDONLY)) < 0){
+			perror("open (read) error\n");
+		}
+		dup2(fd, 1);
+		close(fd);
 	}
 
 	pid_t pid;
@@ -157,9 +164,9 @@ int execute(Command* cmd){
 		// parent
 		//printf("parent pid: %i\n", pid);
 		waitpid(pid, &status, 0); // WNOHANG parent can run concurrently as child
+		dup2(stdin, 0);
+		dup2(stdout, 1);
 	}
-
-
 
 	return 1;
 }
