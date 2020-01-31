@@ -24,19 +24,16 @@ int main(int argc, char* argv[]){
 	char* welcome_msg = "Welcome to Jsh, Jordan's Shell\n";
 	printf("%s", welcome_msg);
 
-	int status = 1;
-
-	while(status){
+	while(1){
 		printf("$ ");
-		Command cmd;
-		Command* cmd_ptr = &cmd; //pointer to Command cmd
+		// Command cmd;
+		// Command* cmd_ptr = &cmd; //pointer to Command cmd
+		Command* cmd_ptr = (Command*)malloc(sizeof(Command));
 
 		read_line(cmd_ptr);
 		parse(cmd_ptr);
 
-		status = execute(cmd_ptr);
-
-		if(status == 0){
+		if(execute(cmd_ptr) < 0){
 			break;
 		}
 		//might want to free memory in cmd here
@@ -121,54 +118,58 @@ void parse(Command* cmd){
 int execute(Command* cmd){
 	//basic command:
 	if(strcmp(cmd->args[0],"quit") == 0){
-		return 0;
+		return -1;
 	}
 
-	pid_t pid;
-	int status;
-	pid = fork();
-	if(pid == 0){
-		// child process
-		//printf("child pid: %i\n", pid);
-		//redirection handling:
-		// int stdin  = dup(0); //hold filedescriptor for stdin
-		// int stdout = dup(1); //hold filedescriptor for stdout
+	pid_t pid = fork();
+	if(pid < 0){
+		perror("fork() error\n");
+		exit(-1);
+	}
+	else if(pid == 0){
+		//child process
+
+		int save_stdout = dup(1); //save std out
+		int save_stdin = dup(0); //save std in
+		printf("save stdout: %d", save_stdout);
+		printf("save stdin: %d", save_stdin);
 
 		if(cmd->outfile){
-			int fd;
-			if((fd = open(cmd->outfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR)) < 0){
+			int fd = open(cmd->outfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+			if(fd < 0){
 				perror("open (write) error\n");
 			}
-			dup2(fd, STDOUT_FILENO);
+			dup2(fd,1);
 			close(fd);
 		}
 		if(cmd->infile){
-			int fd;
-			printf("infile detected");
-			if((fd = open(cmd->infile, O_RDONLY)) < 0){
+			int fd = open(cmd->infile, O_RDONLY);
+			if(fd < 0){
 				perror("open (read) error\n");
 			}
-			dup2(fd, STDIN_FILENO);
+			dup2(fd,0);
 			close(fd);
 		}
+
+		//execute command
 		if(execvp(cmd->args[0], cmd->args) == -1){
 			perror("execv error\n");
 		}
 
-		// dup2(stdin, 0);
-		// dup2(stdout, 1);
-	}
-	else if(pid < 0){
-		// failed
-		perror("fork error\n");
+		//replace stdout / in
+		close(1);
+		close(0);
+		dup2(save_stdin, 0);
+		dup2(save_stdout, 1);
+
+		exit(0);
 	}
 	else{
 		// parent
-		//printf("parent pid: %i\n", pid);
-		waitpid(pid, &status, 0); // WNOHANG parent can run concurrently as child
+		wait(NULL);
 	}
 
-	return 1;
+	return 0;
 }
 
 // input 80 char limit
